@@ -9,6 +9,7 @@ import {
   SunIcon,
   Undo2Icon,
   UploadIcon,
+  WandSparklesIcon,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -19,6 +20,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AssistantDialog } from "@/components/mastering/assistant-dialog";
 import { ChainSection } from "@/components/mastering/chain-section";
 import { MetersSection } from "@/components/mastering/meters-section";
 import { MonitorSection } from "@/components/mastering/monitor-section";
@@ -237,6 +239,20 @@ export function App() {
   );
   const resetChain = useCallback(() => editChain(defaultChain()), [editChain]);
 
+  const [assistantRun, setAssistantRun] = useState(0);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const openAssistant = useCallback(() => {
+    setAssistantRun((run) => run + 1);
+    setAssistantOpen(true);
+  }, []);
+  const applyAssistant = useCallback(
+    (next: ChainSlot[], trim: number) => {
+      editChain(next);
+      setInputGainDb(trim);
+    },
+    [editChain]
+  );
+
   const utility = slots.find((slot) => slot.device === "audioui.utility");
   const stereo = useMemo(
     () =>
@@ -377,6 +393,28 @@ export function App() {
           <SparklesIcon />
           Demo song
         </Button>
+        <Button
+          disabled={!song || session.loading}
+          onClick={openAssistant}
+          size="sm"
+          title={song ? "Analyze the song and propose mastering settings" : "Load a song first"}
+          variant="secondary"
+        >
+          <WandSparklesIcon />
+          AI mastering
+        </Button>
+        {song && assistantRun > 0 ? (
+          <AssistantDialog
+            inputGainDb={inputGainDb}
+            key={assistantRun}
+            onApply={applyAssistant}
+            onOpenChange={setAssistantOpen}
+            open={assistantOpen}
+            slots={slots}
+            song={song}
+            target={target}
+          />
+        ) : null}
         <div className="ms-auto flex items-center gap-1">
           <Button
             aria-label="Undo"
