@@ -28,7 +28,7 @@ const CLIP_DB = -0.1;
 const lufs = (value: number) =>
   Number.isFinite(value) ? `${value.toFixed(1)} LUFS` : "-∞ LUFS";
 
-function Heading({ children }: { children: string }) {
+export function Heading({ children }: { children: string }) {
   return (
     <h3 className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
       {children}
@@ -37,7 +37,7 @@ function Heading({ children }: { children: string }) {
 }
 
 /** A stereo peak/RMS meter with its scale. */
-function StereoMeter({
+export function StereoMeter({
   label,
   source,
 }: {
@@ -101,7 +101,7 @@ function ReductionMeter({
 }
 
 /** Latched clip lights and the loudest sample since the last reset, written outside React. */
-function PeakHold({ source }: { source: Source<MeterPrimitive.Root.Frame> }) {
+export function PeakHold({ source }: { source: Source<MeterPrimitive.Root.Frame> }) {
   const [clipped, setClipped] = useState<[boolean, boolean]>([false, false]);
   const maxRef = useRef(Number.NEGATIVE_INFINITY);
   const textRef = useRef<HTMLSpanElement>(null);
@@ -166,7 +166,7 @@ function PeakHold({ source }: { source: Source<MeterPrimitive.Root.Frame> }) {
 }
 
 /** Phase correlation, -1 (out of phase) to +1 (mono), with the needle written each frame. */
-function CorrelationMeter({ source }: { source: Source<number> }) {
+export function CorrelationMeter({ source }: { source: Source<number> }) {
   const markerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {

@@ -1,4 +1,5 @@
 import detectBeat from "@audio/beat-detect";
+import chroma from "@audio/mir-chroma";
 import {
   autoWarp,
   detectTransients,
@@ -7,6 +8,7 @@ import {
 import type { ParameterValue } from "@audio-ui/core/device";
 import { type Breakpoint, levelAt } from "@audio-ui/core/envelope";
 import type { Note } from "@audio-ui/core/piano-roll";
+import type { Scale } from "@audio-ui/core/pitch";
 import type { PlayedClip, WarpMode } from "@audio-ui/core/playback";
 import { unwarpedTime, type WarpMarker, warpedTime } from "@audio-ui/core/time";
 import type { ClipValue } from "@audio-ui/react";
@@ -47,6 +49,8 @@ export interface Arranged {
   recording?: string;
   /** Whether its source plays backwards. */
   reversed?: boolean;
+  /** A MIDI clip's scale: the root and the scale its roll marks, and whether it is on. */
+  scale?: ClipScale;
   /** Where its source begins in the recording it was cut from, once cropped. @default 0 */
   sourceFrom?: number;
   /** How long the recording behind the clip is: trimming stops where it runs out. */
@@ -137,6 +141,8 @@ export interface TrackDevice {
   id: string;
   /** An instrument comes first on a MIDI track, before every effect. */
   instrument?: boolean;
+  /** For a device that takes a sidechain (its description says `sidechain`): the track it listens to, that track's sound after its devices and before its volume, so a muted kick still keys. None: it follows its own sound. */
+  key?: string;
   /** A device switched off passes the sound on unchanged. @default true */
   on?: boolean;
   /** A rack's chains and macros: what a device of the kind `audioui.rack`, `audioui.instrument-rack` or `audioui.drum-rack` holds instead of a state of its own. */
@@ -764,6 +770,12 @@ export interface Clipping {
   parts: (Arranged & { row: number })[];
 }
 
+/** A MIDI clip's scale: a root (0 for C) and a scale's name, kept while it is off. */
+export interface ClipScale extends Scale {
+  /** Whether its roll marks the scale's rows. */
+  on: boolean;
+}
+
 /**
  * How a MIDI clip swings: `amount` from 0, straight, to 1, where an off-beat
  * plays a third of a step late, as in a triplet; `division` is the step that
@@ -1029,6 +1041,48 @@ function fittedGrid(
   }
   start -= Math.floor(start / period) * period;
   return { bpm: 60 / period, firstBeat: start };
+}
+
+/** The window a recording's chroma is read on, in samples: a power of two, as the FFT takes, near 0.17 s at 48 kHz. */
+const CHROMA_WINDOW = 8192;
+/** A window quieter than this, as a mean square, is silence: it says nothing of the key. */
+const CHROMA_SILENCE = 1e-6;
+
+/**
+ * How much of a recording's sound lies in each pitch class, C to B, summing
+ * to 1, read once as it is decoded: what a key is read from, with notes or
+ * without (`detectKeys` of the Scale menu). Its channels mixed, it is the
+ * chroma of `@audio/mir-chroma` on each window that is not silence, averaged.
+ * All zeros for a recording that is all silence.
+ */
+export function audioChroma(
+  channels: readonly Float32Array[],
+  sampleRate: number
+): number[] {
+  const length = channels[0]?.length ?? 0;
+  const sum = new Array<number>(12).fill(0);
+  const mix = new Float32Array(CHROMA_WINDOW);
+  let frames = 0;
+  for (let at = 0; at + CHROMA_WINDOW <= length; at += CHROMA_WINDOW) {
+    let energy = 0;
+    for (let frame = 0; frame < CHROMA_WINDOW; frame += 1) {
+      let sample = 0;
+      for (const channel of channels) {
+        sample += channel[at + frame] as number;
+      }
+      sample /= channels.length;
+      mix[frame] = sample;
+      energy += sample * sample;
+    }
+    if (energy / CHROMA_WINDOW >= CHROMA_SILENCE) {
+      const read = chroma(mix, { fs: sampleRate });
+      for (let pitchClass = 0; pitchClass < 12; pitchClass += 1) {
+        sum[pitchClass] = (sum[pitchClass] as number) + (read[pitchClass] ?? 0);
+      }
+      frames += 1;
+    }
+  }
+  return frames > 0 ? sum.map((value) => value / frames) : sum;
 }
 
 /**

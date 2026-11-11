@@ -127,7 +127,11 @@ export function useMasteringSession(options: MasteringOptions) {
     appliedStates.current = new Map(slots.map((slot) => [slot.id, slot.state]));
     graph.setLatency(chainLatency(slots, ctx.sampleRate));
     return () => {
-      graph.pre.disconnect(chain.input);
+      try {
+        graph.pre.disconnect(chain.input);
+      } catch {
+        // The graph was disposed first, as the session unmounts.
+      }
       chain.dispose();
       chainRef.current = null;
     };
@@ -307,6 +311,7 @@ export function useMasteringSession(options: MasteringOptions) {
     now.node.disconnect();
     player.current = null;
   }, []);
+  useEffect(() => stopPlayer, [stopPlayer]);
 
   const startPlayer = useCallback(
     (from: number) => {

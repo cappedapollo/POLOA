@@ -293,7 +293,6 @@ export function suggestMaster(
           compressor,
           {
             attackMs: 30,
-            autoMakeup: false,
             enabled: true,
             kneeDb: 6,
             makeupDb: 0,

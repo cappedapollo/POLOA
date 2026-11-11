@@ -156,6 +156,105 @@ export async function renderDemoSong(): Promise<Blob> {
   return encodeWav16(rendered);
 }
 
+/** The demo's tempo, for an arrangement of its stems. */
+export const DEMO_BPM = BPM;
+/** The lead's notes, an eighth each, a bar per chord: Hz, or 0 for a rest. */
+const LEAD = [
+  [659.25, 0, 587.33, 523.25, 0, 523.25, 587.33, 659.25],
+  [698.46, 0, 659.25, 587.33, 523.25, 0, 440, 0],
+  [783.99, 0, 659.25, 523.25, 0, 659.25, 783.99, 880],
+  [783.99, 0, 739.99, 0, 587.33, 0, 493.88, 0],
+];
+/** The lead comes in on this bar: the song opens on the band. */
+const LEAD_FROM = 4;
+
+function lead(ctx: BaseAudioContext, out: AudioNode, hz: number, at: number, length: number) {
+  const osc = ctx.createOscillator();
+  osc.type = "square";
+  osc.frequency.value = hz;
+  const vibrato = ctx.createOscillator();
+  const depth = ctx.createGain();
+  vibrato.frequency.value = 5.5;
+  depth.gain.value = hz * 0.006;
+  vibrato.connect(depth).connect(osc.frequency);
+  const low = ctx.createBiquadFilter();
+  low.type = "lowpass";
+  low.frequency.value = 3200;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, at);
+  gain.gain.exponentialRampToValueAtTime(0.16, at + 0.015);
+  gain.gain.setTargetAtTime(0.0001, at + length * 0.85, 0.04);
+  osc.connect(low).connect(gain).connect(out);
+  for (const node of [osc, vibrato]) {
+    node.start(at);
+    node.stop(at + length + 0.3);
+  }
+}
+
+export interface DemoStem {
+  channels: Float32Array[];
+  name: string;
+}
+
+/**
+ * The demo song as dry stems, a WAV each would be in a session: kick, snare,
+ * hats, bass, pad and a lead that comes in on bar 5, each centred and at the
+ * level it was tracked at, left for the mix to balance, pan and place.
+ */
+export async function renderDemoStems(sampleRate = SAMPLE_RATE): Promise<DemoStem[]> {
+  const seconds = BARS * BAR + 1;
+  const stem = async (
+    name: string,
+    draw: (ctx: OfflineAudioContext, out: AudioNode, noise: AudioBuffer) => void
+  ): Promise<DemoStem> => {
+    const ctx = new OfflineAudioContext(2, Math.round(seconds * sampleRate), sampleRate);
+    draw(ctx, ctx.destination, noiseBuffer(ctx, 0.3));
+    const rendered = await ctx.startRendering();
+    return { channels: [rendered.getChannelData(0), rendered.getChannelData(1)], name };
+  };
+  const everyBeat = (play: (at: number, beat: number, bar: number) => void) => {
+    for (let bar = 0; bar < BARS; bar += 1) {
+      for (let beat = 0; beat < 4; beat += 1) {
+        play(bar * BAR + beat * BEAT, beat, bar);
+      }
+    }
+  };
+  return Promise.all([
+    stem("Kick", (ctx, out) => everyBeat((at) => kick(ctx, out, at))),
+    stem("Snare", (ctx, out, noise) =>
+      everyBeat((at, beat) => beat % 2 === 1 && snare(ctx, out, noise, at))
+    ),
+    stem("Hats", (ctx, out, noise) =>
+      everyBeat((at) => {
+        hat(ctx, out, noise, at, 0.5);
+        hat(ctx, out, noise, at + BEAT / 2, 0.3);
+      })
+    ),
+    stem("Bass", (ctx, out) =>
+      everyBeat((at, beat, bar) => {
+        const { root } = PROGRESSION[bar % PROGRESSION.length];
+        bass(ctx, out, root * (beat === 3 ? 1.5 : 1), at, BEAT * 0.9);
+      })
+    ),
+    stem("Pad", (ctx, out) => {
+      const left = panned(ctx, -0.8, out);
+      const right = panned(ctx, 0.8, out);
+      for (let bar = 0; bar < BARS; bar += 1) {
+        pad(ctx, left, right, PROGRESSION[bar % PROGRESSION.length].chord, bar * BAR, BAR);
+      }
+    }),
+    stem("Lead", (ctx, out) => {
+      for (let bar = LEAD_FROM; bar < BARS; bar += 1) {
+        (LEAD[bar % LEAD.length] ?? []).forEach((hz, eighth) => {
+          if (hz > 0) {
+            lead(ctx, out, hz, bar * BAR + (eighth * BEAT) / 2, BEAT / 2);
+          }
+        });
+      }
+    }),
+  ]);
+}
+
 function encodeWav16(buffer: AudioBuffer): Blob {
   const channels = buffer.numberOfChannels;
   const frames = buffer.length;
