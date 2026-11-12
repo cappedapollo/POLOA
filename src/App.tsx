@@ -55,6 +55,11 @@ export function App() {
             Master
           </ToggleGroupItem>
         </ToggleGroup>
+        <span className="text-xs ms-auto">
+          Please contact&nbsp;
+          <a href="mailto:cappedapollo@gmail.com" className="text-blue-400 text-decoration-underline text-bold text-lg">HERE</a> 
+          &nbsp;for any questions or feedback
+        </span>
         <Button
           aria-label="Toggle dark mode"
           className="ms-auto"
